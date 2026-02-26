@@ -4,6 +4,7 @@
    - Cloudinary: image upload (unsigned preset)
    - Auth: anonymous
    - Optimistic UI on pick (no waiting server)
+   - FIX Netlify: wait for Firebase init
 ========================= */
 
 const SIZES = [16, 32, 64, 128];
@@ -34,9 +35,23 @@ function escapeHtml(str) {
 
 /* =========================
    Firebase handles (injected from index.html)
+   FIX: wait until window.__FB__ exists (Netlify race)
 ========================= */
-function fb() {
-  if (!window.__FB__) throw new Error("Firebase not initialized. Check index.html firebaseConfig.");
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function fb() {
+  const timeout = 10000; // 10s
+  const start = Date.now();
+
+  while (!window.__FB__) {
+    if (Date.now() - start > timeout) {
+      throw new Error("Firebase not initialized (timeout). Check index.html firebaseConfig.");
+    }
+    await sleep(50);
+  }
+
   return window.__FB__;
 }
 
@@ -74,7 +89,7 @@ async function uploadToCloudinary(file) {
    Firestore helpers
 ========================= */
 async function listQuizzes() {
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
   const q = FS.query(FS.collection(db, "quizzes"), FS.orderBy("createdAt", "desc"));
   const snap = await FS.getDocs(q);
@@ -82,7 +97,7 @@ async function listQuizzes() {
 }
 
 async function getQuiz(quizId) {
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
   const ref = FS.doc(db, "quizzes", quizId);
   const snap = await FS.getDoc(ref);
@@ -90,7 +105,7 @@ async function getQuiz(quizId) {
 }
 
 async function listItems(quizId) {
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
   const q = FS.query(FS.collection(db, "quizzes", quizId, "items"), FS.orderBy("createdAt", "asc"));
   const snap = await FS.getDocs(q);
@@ -98,7 +113,7 @@ async function listItems(quizId) {
 }
 
 async function ensureStatsDoc(quizId, itemId) {
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
   const ref = FS.doc(db, "quizzes", quizId, "stats", itemId);
   const snap = await FS.getDoc(ref);
@@ -106,7 +121,7 @@ async function ensureStatsDoc(quizId, itemId) {
 }
 
 async function incMatch(quizId, itemAId, itemBId, winnerId) {
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
 
   await ensureStatsDoc(quizId, itemAId);
@@ -129,7 +144,7 @@ async function incMatch(quizId, itemAId, itemBId, winnerId) {
 }
 
 async function getStatsMap(quizId) {
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
   const snap = await FS.getDocs(FS.collection(db, "quizzes", quizId, "stats"));
   const map = {};
@@ -159,12 +174,10 @@ async function runBackgroundQueue() {
       bgQueue.shift();
     } catch (e) {
       job.tries += 1;
-      // retry a few times, then drop
       if (job.tries >= 5) {
         console.error("BG job dropped after retries:", e);
         bgQueue.shift();
       } else {
-        // backoff
         await new Promise(r => setTimeout(r, 300 * job.tries));
       }
     }
@@ -371,7 +384,7 @@ async function saveQuiz() {
 
   const categories = catsRaw ? catsRaw.split(",").map(s=>s.trim()).filter(Boolean) : [];
 
-  const { db } = fb();
+  const { db } = await fb();
   const FS = await fbImports();
 
   const quizId = uid("quiz");
@@ -479,7 +492,7 @@ function startRun(quiz, items) {
     quizTitle: quiz.title,
     round: 1,
     roundItems: pool,
-    allItems: pool.slice(),  // <-- serve per results corretti
+    allItems: pool.slice(),
     pairIndex: 0,
     winners: [],
     eliminations: [],
@@ -531,7 +544,6 @@ function pickWinnerInstant(a, b, winner) {
   run.locked = true;
   setPlayButtonsEnabled(false);
 
-  // update local state immediately
   const loser = winner.id === a.id ? b : a;
 
   run.picks.push({ round: run.round, aId: a.id, bId: b.id, winnerId: winner.id });
@@ -540,10 +552,8 @@ function pickWinnerInstant(a, b, winner) {
 
   run.pairIndex += 1;
 
-  // render next match instantly
-  renderPlay();
+  renderPlay(); // instant
 
-  // background: save stats (retry)
   enqueueBackground(() => incMatch(run.quizId, a.id, b.id, winner.id));
 }
 
