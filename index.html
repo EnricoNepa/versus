@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Versus Bracket</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" role="button" tabindex="0" id="goHome">VS</div>
+
+    <div class="searchWrap" id="homeSearchWrap">
+      <input id="searchInput" class="input" type="search" placeholder="Cerca un quiz..." />
+    </div>
+
+    <button id="newQuizBtn" class="btn primary">Crea quiz</button>
+  </header>
+
+  <main class="container">
+    <!-- HOME -->
+    <section id="view-home" class="view">
+      <div class="gridHeader">
+        <h1>Quiz</h1>
+        <div class="muted" id="homeCount"></div>
+      </div>
+
+      <div id="quizGrid" class="grid"></div>
+
+      <div class="empty" id="homeEmpty" hidden>
+        Nessun quiz. Clicca “Crea quiz”.
+      </div>
+    </section>
+
+    <!-- CREATE -->
+    <section id="view-create" class="view" hidden>
+      <h1>Crea un quiz</h1>
+
+      <div class="card">
+        <div class="row">
+          <label class="label">Titolo</label>
+          <input id="cqTitle" class="input" type="text" placeholder="Es. Best Car" />
+        </div>
+
+        <div class="row">
+          <label class="label">Descrizione</label>
+          <textarea id="cqDesc" class="input" rows="3" placeholder="Descrizione breve..."></textarea>
+        </div>
+
+        <div class="row">
+          <label class="label">Categorie (opzionale, separate da virgola)</label>
+          <input id="cqCats" class="input" type="text" placeholder="sport, historic, electric" />
+        </div>
+
+        <div class="row">
+          <label class="label">Sizes supportate</label>
+          <div class="chips" id="cqSizes"></div>
+        </div>
+
+        <div class="row">
+          <label class="label">Cover (immagine)</label>
+          <input id="cqCover" class="input" type="file" accept="image/*" />
+          <div class="previewRow">
+            <img id="cqCoverPreview" class="previewImg" alt="" />
+          </div>
+        </div>
+      </div>
+
+      <h2>Elementi</h2>
+
+      <div class="card">
+        <div class="twoCol">
+          <div class="row">
+            <label class="label">Nome elemento</label>
+            <input id="itemName" class="input" type="text" placeholder="Es. Ferrari F40" />
+          </div>
+
+          <div class="row">
+            <label class="label">Categoria (opzionale)</label>
+            <input id="itemCat" class="input" type="text" placeholder="Es. historic" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label class="label">Immagine elemento</label>
+          <input id="itemImg" class="input" type="file" accept="image/*" />
+          <div class="previewRow">
+            <img id="itemImgPreview" class="previewImg" alt="" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="addItemBtn" class="btn">Aggiungi elemento</button>
+          <div class="muted" id="itemsCount">0 elementi</div>
+        </div>
+
+        <div id="itemsList" class="itemsList"></div>
+      </div>
+
+      <div class="actions sticky">
+        <button id="cancelCreateBtn" class="btn">Annulla</button>
+        <button id="saveQuizBtn" class="btn primary">Pubblica quiz</button>
+      </div>
+    </section>
+
+    <!-- PLAY SETTINGS -->
+    <section id="view-settings" class="view" hidden>
+      <div class="pageTop">
+        <button class="btn" id="backFromSettings">← Indietro</button>
+      </div>
+
+      <div class="card hero">
+        <img id="psCover" class="heroImg" alt="" />
+        <div class="heroBody">
+          <h1 id="psTitle"></h1>
+          <p class="muted" id="psDesc"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="twoCol">
+          <div class="row">
+            <label class="label">Categoria</label>
+            <select id="psCategory" class="input"></select>
+          </div>
+
+          <div class="row">
+            <label class="label">Numero di elementi (bracket)</label>
+            <select id="psSize" class="input"></select>
+          </div>
+        </div>
+
+        <div class="row">
+          <label class="label">Random</label>
+          <label class="switch">
+            <input id="psShuffle" type="checkbox" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="startPlayBtn" class="btn primary">Start</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PLAY -->
+    <section id="view-play" class="view" hidden>
+      <div class="pageTop">
+        <button class="btn" id="quitPlayBtn">✕ Esci</button>
+        <div class="muted" id="playProgress"></div>
+      </div>
+
+      <div class="match">
+        <button class="choice" id="choiceA">
+          <img id="imgA" alt="" />
+          <div class="choiceName" id="nameA"></div>
+        </button>
+
+        <div class="vs">VS</div>
+
+        <button class="choice" id="choiceB">
+          <img id="imgB" alt="" />
+          <div class="choiceName" id="nameB"></div>
+        </button>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="view-results" class="view" hidden>
+      <div class="pageTop">
+        <button class="btn" id="backHomeFromResults">← Home</button>
+        <button class="btn" id="openRankFromResults">Rank</button>
+      </div>
+
+      <h1 id="resTitle"></h1>
+      <p class="muted">La tua classifica (dal 1° all’ultimo)</p>
+
+      <div class="card">
+        <div id="resList" class="rankList"></div>
+      </div>
+    </section>
+
+    <!-- RANK -->
+    <section id="view-rank" class="view" hidden>
+      <div class="pageTop">
+        <button class="btn" id="backFromRank">← Indietro</button>
+      </div>
+
+      <h1 id="rankTitle"></h1>
+      <p class="muted">Media globale (winrate + partite)</p>
+
+      <div class="card">
+        <div id="rankList" class="rankList"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer muted">
+    Dati condivisi online (Firestore) • Immagini su Cloudinary.
+  </footer>
+
+  <!-- Cloudinary config -->
+  <script>
+    window.CLOUDINARY_CLOUD_NAME = "db86ixsho";
+    window.CLOUDINARY_UPLOAD_PRESET = "versus";
+  </script>
+
+  <!-- Firebase bootstrap -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDDkJ8m8K7sBOPH3Ei4J7A9iBOg6kC0qkc",
+      authDomain: "versus-348a9.firebaseapp.com",
+      projectId: "versus-348a9",
+      storageBucket: "versus-348a9.firebasestorage.app",
+      messagingSenderId: "690539157681",
+      appId: "1:690539157681:web:d1f01cce9de30e63512a90"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    await signInAnonymously(auth);
+    window.__FB__ = { auth, db };
+
+    import "./app.js";
+  </script>
+</body>
+</html>
