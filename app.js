@@ -800,7 +800,11 @@ async function renderSettings(quizId) {
   const items = await listItems(quizId);
 
   const catSel = $("psCategory");
+  const sizeSel = $("psSize");
+
   catSel.innerHTML = "";
+  sizeSel.innerHTML = "";
+
   const hasCats = (quiz.categories && quiz.categories.length);
 
   const optAll = document.createElement("option");
@@ -817,16 +821,49 @@ async function renderSettings(quizId) {
     }
   }
 
-  const sizeSel = $("psSize");
-  sizeSel.innerHTML = "";
-  for (const s of (quiz.allowedSizes || [])) {
-    const o = document.createElement("option");
-    o.value = String(s);
-    o.textContent = String(s);
-    sizeSel.appendChild(o);
+  function refreshSizes() {
+    const selectedCategory = catSel.value || "";
+    let pool = items.slice();
+
+    if (selectedCategory) {
+      const s = selectedCategory.trim().toLowerCase();
+      pool = pool.filter(it => (it.category || "").trim().toLowerCase() === s);
+    }
+
+    const availableCount = pool.length;
+
+    sizeSel.innerHTML = "";
+
+    const allowed = (quiz.allowedSizes || []).filter(size => size <= availableCount);
+
+    for (const s of allowed) {
+      const o = document.createElement("option");
+      o.value = String(s);
+      o.textContent = String(s);
+      sizeSel.appendChild(o);
+    }
+
+    if (allowed.length === 0) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "Nessuna size disponibile";
+      sizeSel.appendChild(o);
+      sizeSel.disabled = true;
+    } else {
+      sizeSel.disabled = false;
+    }
   }
 
-  $("startPlayBtn").onclick = () => startRun(quiz, items).catch(console.error);
+  refreshSizes();
+  catSel.onchange = refreshSizes;
+
+  $("startPlayBtn").onclick = () => {
+    if (!sizeSel.value) {
+      alert("Nessuna size disponibile per questa categoria.");
+      return;
+    }
+    startRun(quiz, items).catch(console.error);
+  };
 }
 
 async function startRun(quiz, items) {
