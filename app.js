@@ -5,11 +5,15 @@
    - Auth: anonymous
    - Optimistic UI on pick (no waiting server)
    - FIX Netlify: wait for Firebase init
+   - Image suggestions: Wikimedia Commons
 ========================= */
 
 const SIZES = [16, 32, 64, 128];
 const $ = (id) => document.getElementById(id);
 
+/* =========================
+   Utils
+========================= */
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
@@ -33,16 +37,23 @@ function escapeHtml(str) {
   }[m]));
 }
 
-/* =========================
-   Firebase handles (injected from index.html)
-   FIX: wait until window.__FB__ exists (Netlify race)
-========================= */
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function debounce(fn, wait = 350) {
+  let t = null;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), wait);
+  };
+}
+
+/* =========================
+   Firebase handles
+========================= */
 async function fb() {
-  const timeout = 10000; // 10s
+  const timeout = 10000;
   const start = Date.now();
 
   while (!window.__FB__) {
@@ -68,14 +79,14 @@ async function fbImports() {
 /* =========================
    Cloudinary upload
 ========================= */
-async function uploadToCloudinary(file) {
+async function uploadToCloudinary(fileOrUrl) {
   const cloud = window.CLOUDINARY_CLOUD_NAME;
   const preset = window.CLOUDINARY_UPLOAD_PRESET;
   if (!cloud || !preset) throw new Error("Missing Cloudinary config in index.html");
 
   const url = `https://api.cloudinary.com/v1_1/${cloud}/image/upload`;
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", fileOrUrl);
   formData.append("upload_preset", preset);
 
   const res = await fetch(url, { method: "POST", body: formData });
@@ -83,6 +94,42 @@ async function uploadToCloudinary(file) {
   const data = await res.json();
   if (!data.secure_url) throw new Error("Cloudinary response missing secure_url");
   return data.secure_url;
+}
+
+/* =========================
+   Wikimedia Commons search
+========================= */
+async function searchCommonsImages(query, limit = 8) {
+  const q = (query || "").trim();
+  if (q.length < 3) return [];
+
+  const url = new URL("https://commons.wikimedia.org/w/api.php");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("action", "query");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("generator", "search");
+  url.searchParams.set("gsrsearch", q);
+  url.searchParams.set("gsrnamespace", "6");
+  url.searchParams.set("gsrlimit", String(limit));
+  url.searchParams.set("prop", "imageinfo");
+  url.searchParams.set("iiprop", "url");
+  url.searchParams.set("iiurlwidth", "400");
+
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Errore ricerca immagini");
+  const data = await res.json();
+
+  const pages = Object.values(data?.query?.pages || {});
+  return pages
+    .map(p => {
+      const info = p.imageinfo?.[0];
+      return info ? {
+        title: p.title?.replace(/^File:/, "") || "",
+        imageUrl: info.url || "",
+        thumbUrl: info.thumburl || info.url || ""
+      } : null;
+    })
+    .filter(Boolean);
 }
 
 /* =========================
@@ -195,9 +242,10 @@ let state = {
 
   draft: {
     selectedSizes: new Set([16, 32]),
-    coverFile: null,
+    coverSource: null,       // File oppure URL string
     coverPreviewUrl: "",
-    items: [], // { id, name, category, file, previewUrl }
+    pendingItemSource: null, // File oppure URL string
+    items: [],               // { id, name, category, source, previewUrl }
   },
 
   run: null,
@@ -230,7 +278,7 @@ function showView(name) {
 }
 
 /* =========================
-   HOME
+   Home
 ========================= */
 async function renderHome() {
   const qTxt = ($("searchInput").value || "").trim().toLowerCase();
@@ -270,7 +318,7 @@ async function renderHome() {
 }
 
 /* =========================
-   CREATE
+   Create
 ========================= */
 function renderCreate() {
   const wrap = $("cqSizes");
@@ -328,7 +376,7 @@ function updateItemsUI() {
 function onCoverPicked() {
   const f = $("cqCover").files?.[0];
   if (!f) return;
-  state.draft.coverFile = f;
+  state.draft.coverSource = f;
   state.draft.coverPreviewUrl = URL.createObjectURL(f);
   $("cqCoverPreview").style.display = "block";
   $("cqCoverPreview").src = state.draft.coverPreviewUrl;
@@ -337,6 +385,7 @@ function onCoverPicked() {
 function onItemImgPicked() {
   const f = $("itemImg").files?.[0];
   if (!f) return;
+  state.draft.pendingItemSource = f;
   $("itemImgPreview").style.display = "block";
   $("itemImgPreview").src = URL.createObjectURL(f);
 }
@@ -345,23 +394,30 @@ function addItem() {
   const name = ($("itemName").value || "").trim();
   const category = ($("itemCat").value || "").trim();
   const file = $("itemImg").files?.[0];
+  const pickedSource = file || state.draft.pendingItemSource;
 
   if (!name) return alert("Inserisci il nome dell’elemento.");
-  if (!file) return alert("Carica un’immagine per l’elemento.");
+  if (!pickedSource) return alert("Carica un’immagine o scegli un suggerimento.");
+
+  const previewUrl = typeof pickedSource === "string"
+    ? pickedSource
+    : URL.createObjectURL(pickedSource);
 
   state.draft.items.push({
     id: uid("item"),
     name,
     category,
-    file,
-    previewUrl: URL.createObjectURL(file),
+    source: pickedSource,
+    previewUrl,
   });
 
+  state.draft.pendingItemSource = null;
   $("itemName").value = "";
   $("itemCat").value = "";
   $("itemImg").value = "";
   $("itemImgPreview").style.display = "none";
   $("itemImgPreview").src = "";
+  hideItemSuggestions();
 
   updateItemsUI();
 }
@@ -373,7 +429,7 @@ async function saveQuiz() {
   const allowedSizes = Array.from(state.draft.selectedSizes).sort((a,b)=>a-b);
 
   if (!title) return alert("Inserisci un titolo.");
-  if (!state.draft.coverFile) return alert("Carica una cover.");
+  if (!state.draft.coverSource) return alert("Carica una cover o scegli un suggerimento.");
   if (allowedSizes.length === 0) return alert("Seleziona almeno una size.");
   if (state.draft.items.length < 2) return alert("Aggiungi almeno 2 elementi.");
 
@@ -388,8 +444,7 @@ async function saveQuiz() {
   const FS = await fbImports();
 
   const quizId = uid("quiz");
-
-  const coverUrl = await uploadToCloudinary(state.draft.coverFile);
+  const coverUrl = await uploadToCloudinary(state.draft.coverSource);
 
   await FS.setDoc(FS.doc(db, "quizzes", quizId), {
     title,
@@ -402,7 +457,7 @@ async function saveQuiz() {
   });
 
   for (const it of state.draft.items) {
-    const imageUrl = await uploadToCloudinary(it.file);
+    const imageUrl = await uploadToCloudinary(it.source);
 
     await FS.setDoc(FS.doc(db, "quizzes", quizId, "items", it.id), {
       name: it.name,
@@ -414,7 +469,14 @@ async function saveQuiz() {
     await ensureStatsDoc(quizId, it.id);
   }
 
-  state.draft = { selectedSizes: new Set([16,32]), coverFile:null, coverPreviewUrl:"", items:[] };
+  state.draft = {
+    selectedSizes: new Set([16,32]),
+    coverSource: null,
+    coverPreviewUrl: "",
+    pendingItemSource: null,
+    items: []
+  };
+
   $("cqTitle").value = "";
   $("cqDesc").value = "";
   $("cqCats").value = "";
@@ -423,12 +485,108 @@ async function saveQuiz() {
   $("cqCoverPreview").src = "";
   $("cqSizes").dataset.ready = "";
 
+  hideCoverSuggestions();
+  hideItemSuggestions();
+
   homeCache.quizzes = [];
   go("home");
 }
 
 /* =========================
-   SETTINGS
+   Suggestions UI
+========================= */
+function renderSuggestionTiles(container, items, onPick) {
+  container.innerHTML = "";
+
+  items.forEach(it => {
+    const tile = document.createElement("div");
+    tile.className = "suggestTile";
+    tile.innerHTML = `
+      <img src="${it.thumbUrl}" alt="">
+      <div class="cap">${escapeHtml(it.title)}</div>
+    `;
+    tile.onclick = () => onPick(it);
+    container.appendChild(tile);
+  });
+}
+
+function showCoverSuggestions() {
+  $("coverSuggestBox").hidden = false;
+}
+function hideCoverSuggestions() {
+  $("coverSuggestBox").hidden = true;
+  $("coverSuggestGrid").innerHTML = "";
+}
+function showItemSuggestions() {
+  $("itemSuggestBox").hidden = false;
+}
+function hideItemSuggestions() {
+  $("itemSuggestBox").hidden = true;
+  $("itemSuggestGrid").innerHTML = "";
+}
+
+const debouncedCoverSuggest = debounce(async () => {
+  const q = $("cqTitle").value.trim();
+  if (q.length < 3) {
+    hideCoverSuggestions();
+    return;
+  }
+  showCoverSuggestions();
+  const items = await searchCommonsImages(q, 8);
+  renderSuggestionTiles($("coverSuggestGrid"), items, (it) => {
+    state.draft.coverSource = it.imageUrl;
+    state.draft.coverPreviewUrl = it.imageUrl;
+    $("cqCover").value = "";
+    $("cqCoverPreview").style.display = "block";
+    $("cqCoverPreview").src = it.imageUrl;
+  });
+}, 400);
+
+const debouncedItemSuggest = debounce(async () => {
+  const q = $("itemName").value.trim();
+  if (q.length < 3) {
+    hideItemSuggestions();
+    return;
+  }
+  showItemSuggestions();
+  const items = await searchCommonsImages(q, 8);
+  renderSuggestionTiles($("itemSuggestGrid"), items, (it) => {
+    state.draft.pendingItemSource = it.imageUrl;
+    $("itemImg").value = "";
+    $("itemImgPreview").style.display = "block";
+    $("itemImgPreview").src = it.imageUrl;
+  });
+}, 400);
+
+async function manualOpenCoverSuggestions() {
+  const q = $("cqTitle").value.trim();
+  if (q.length < 3) return alert("Scrivi prima almeno 3 caratteri nel titolo.");
+  showCoverSuggestions();
+  const items = await searchCommonsImages(q, 8);
+  renderSuggestionTiles($("coverSuggestGrid"), items, (it) => {
+    state.draft.coverSource = it.imageUrl;
+    state.draft.coverPreviewUrl = it.imageUrl;
+    $("cqCover").value = "";
+    $("cqCoverPreview").style.display = "block";
+    $("cqCoverPreview").src = it.imageUrl;
+  });
+}
+
+async function manualOpenItemSuggestions() {
+  const q = $("itemName").value.trim();
+  if (q.length < 3) return alert("Scrivi prima almeno 3 caratteri nel nome elemento.");
+  showItemSuggestions();
+  const items = await searchCommonsImages(q, 8);
+  renderSuggestionTiles($("itemSuggestGrid"), items, (it) => {
+    state.draft.pendingItemSource = it.imageUrl;
+    $("itemImg").value = "";
+    $("itemImgPreview").style.display = "block";
+    $("itemImgPreview").src = it.imageUrl;
+  });
+}
+
+/* =========================
+   Settings
 ========================= */
 async function renderSettings(quizId) {
   const quiz = await getQuiz(quizId);
@@ -505,7 +663,7 @@ function startRun(quiz, items) {
 }
 
 /* =========================
-   PLAY (instant)
+   Play
 ========================= */
 function setPlayButtonsEnabled(enabled) {
   $("choiceA").disabled = !enabled;
@@ -552,8 +710,7 @@ function pickWinnerInstant(a, b, winner) {
 
   run.pairIndex += 1;
 
-  renderPlay(); // instant
-
+  renderPlay();
   enqueueBackground(() => incMatch(run.quizId, a.id, b.id, winner.id));
 }
 
@@ -597,7 +754,7 @@ function finishRun(winnerItem) {
 }
 
 /* =========================
-   RESULTS
+   Results
 ========================= */
 function renderResults() {
   const run = state.run;
@@ -623,7 +780,7 @@ function renderResults() {
 }
 
 /* =========================
-   RANK
+   Rank
 ========================= */
 async function renderRank(quizId) {
   const quiz = await getQuiz(quizId);
@@ -711,13 +868,36 @@ function wireUI() {
   $("cqCover").addEventListener("change", onCoverPicked);
   $("itemImg").addEventListener("change", onItemImgPicked);
 
+  $("cqTitle").addEventListener("input", () => debouncedCoverSuggest().catch?.(console.error));
+  $("cqTitle").addEventListener("focus", () => {
+    if ($("cqTitle").value.trim().length >= 3) debouncedCoverSuggest();
+  });
+
+  $("itemName").addEventListener("input", () => debouncedItemSuggest().catch?.(console.error));
+  $("itemName").addEventListener("focus", () => {
+    if ($("itemName").value.trim().length >= 3) debouncedItemSuggest();
+  });
+
+  $("openCoverSuggestBtn").addEventListener("click", () => manualOpenCoverSuggestions().catch(console.error));
+  $("openItemSuggestBtn").addEventListener("click", () => manualOpenItemSuggestions().catch(console.error));
+  $("closeCoverSuggestBtn").addEventListener("click", hideCoverSuggestions);
+  $("closeItemSuggestBtn").addEventListener("click", hideItemSuggestions);
+
   $("addItemBtn").addEventListener("click", addItem);
   $("saveQuizBtn").addEventListener("click", () => saveQuiz().catch(e => { console.error(e); alert("Errore pubblicazione quiz."); }));
 
   $("cancelCreateBtn").addEventListener("click", () => {
     if (confirm("Annullare?")) {
-      state.draft = { selectedSizes: new Set([16,32]), coverFile:null, coverPreviewUrl:"", items:[] };
+      state.draft = {
+        selectedSizes: new Set([16,32]),
+        coverSource:null,
+        coverPreviewUrl:"",
+        pendingItemSource:null,
+        items:[]
+      };
       $("cqSizes").dataset.ready = "";
+      hideCoverSuggestions();
+      hideItemSuggestions();
       go("home");
     }
   });

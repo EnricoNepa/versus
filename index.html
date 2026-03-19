@@ -40,6 +40,13 @@
         <div class="row">
           <label class="label">Titolo</label>
           <input id="cqTitle" class="input" type="text" placeholder="Es. Best Car" />
+          <div id="coverSuggestBox" class="suggestBox" hidden>
+            <div class="suggestHead">
+              <span>Suggerimenti cover</span>
+              <button type="button" class="btn mini" id="closeCoverSuggestBtn">Chiudi</button>
+            </div>
+            <div id="coverSuggestGrid" class="suggestGrid"></div>
+          </div>
         </div>
 
         <div class="row">
@@ -58,7 +65,10 @@
         </div>
 
         <div class="row">
-          <label class="label">Cover (immagine)</label>
+          <div class="labelRow">
+            <label class="label">Cover (immagine)</label>
+            <button type="button" class="btn mini" id="openCoverSuggestBtn">Cerca immagini</button>
+          </div>
           <input id="cqCover" class="input" type="file" accept="image/*" />
           <div class="previewRow">
             <img id="cqCoverPreview" class="previewImg" alt="" />
@@ -73,6 +83,13 @@
           <div class="row">
             <label class="label">Nome elemento</label>
             <input id="itemName" class="input" type="text" placeholder="Es. Ferrari F40" />
+            <div id="itemSuggestBox" class="suggestBox" hidden>
+              <div class="suggestHead">
+                <span>Suggerimenti immagine</span>
+                <button type="button" class="btn mini" id="closeItemSuggestBtn">Chiudi</button>
+              </div>
+              <div id="itemSuggestGrid" class="suggestGrid"></div>
+            </div>
           </div>
 
           <div class="row">
@@ -82,7 +99,10 @@
         </div>
 
         <div class="row">
-          <label class="label">Immagine elemento</label>
+          <div class="labelRow">
+            <label class="label">Immagine elemento</label>
+            <button type="button" class="btn mini" id="openItemSuggestBtn">Cerca immagini</button>
+          </div>
           <input id="itemImg" class="input" type="file" accept="image/*" />
           <div class="previewRow">
             <img id="itemImgPreview" class="previewImg" alt="" />
@@ -200,13 +220,11 @@
     Dati condivisi online (Firestore) • Immagini su Cloudinary.
   </footer>
 
-  <!-- Cloudinary config -->
   <script>
     window.CLOUDINARY_CLOUD_NAME = "db86ixsho";
     window.CLOUDINARY_UPLOAD_PRESET = "versus";
   </script>
 
-  <!-- Firebase bootstrap -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
