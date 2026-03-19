@@ -6,6 +6,7 @@
    - Optimistic UI on pick (no waiting server)
    - FIX Netlify: wait for Firebase init
    - Image suggestions: Wikimedia Commons
+   - Bulk import: txt + zip/folder images
 ========================= */
 
 const SIZES = [16, 32, 64, 128];
@@ -47,6 +48,24 @@ function debounce(fn, wait = 350) {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), wait);
   };
+}
+
+function normalizeMatchKey(str) {
+  return String(str || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isImageFilename(name) {
+  return /\.(png|jpe?g|webp|gif|bmp)$/i.test(name || "");
+}
+
+async function fileToObjectUrl(file) {
+  return URL.createObjectURL(file);
 }
 
 /* =========================
@@ -242,10 +261,10 @@ let state = {
 
   draft: {
     selectedSizes: new Set([16, 32]),
-    coverSource: null,       // File oppure URL string
+    coverSource: null,
     coverPreviewUrl: "",
-    pendingItemSource: null, // File oppure URL string
-    items: [],               // { id, name, category, source, previewUrl }
+    pendingItemSource: null,
+    items: [],
   },
 
   run: null,
@@ -483,6 +502,11 @@ async function saveQuiz() {
   $("cqCover").value = "";
   $("cqCoverPreview").style.display = "none";
   $("cqCoverPreview").src = "";
+  $("bulkTxtFile").value = "";
+  $("bulkZipFile").value = "";
+  $("bulkFolderInput").value = "";
+  $("bulkStatus").textContent = "Nessun import eseguito";
+  $("bulkPreviewWrap").hidden = true;
   $("cqSizes").dataset.ready = "";
 
   hideCoverSuggestions();
@@ -490,6 +514,130 @@ async function saveQuiz() {
 
   homeCache.quizzes = [];
   go("home");
+}
+
+/* =========================
+   Bulk import
+========================= */
+function parseTxtElements(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  return lines.map(line => {
+    const parts = line.split(" - ");
+    const title = (parts[0] || "").trim();
+    const category = parts.slice(1).join(" - ").trim();
+    return {
+      raw: line,
+      title,
+      category
+    };
+  }).filter(x => x.title);
+}
+
+async function readTxtFile(file) {
+  return await file.text();
+}
+
+async function extractImagesFromZip(zipFile) {
+  if (!window.JSZip) throw new Error("JSZip non disponibile");
+  const zip = await window.JSZip.loadAsync(zipFile);
+  const out = [];
+
+  const entries = Object.values(zip.files);
+  for (const entry of entries) {
+    if (entry.dir) continue;
+    if (!isImageFilename(entry.name)) continue;
+
+    const blob = await entry.async("blob");
+    const file = new File([blob], entry.name.split("/").pop(), { type: blob.type || "image/*" });
+    out.push(file);
+  }
+  return out;
+}
+
+function collectImagesFromFolder(fileList) {
+  return Array.from(fileList || []).filter(f => isImageFilename(f.name));
+}
+
+async function processBulkImport() {
+  const txtFile = $("bulkTxtFile").files?.[0];
+  const zipFile = $("bulkZipFile").files?.[0];
+  const folderFiles = $("bulkFolderInput").files;
+
+  if (!txtFile) return alert("Carica prima il file .txt");
+  if (!zipFile && (!folderFiles || folderFiles.length === 0)) {
+    return alert("Carica un file .zip oppure una cartella immagini.");
+  }
+
+  $("bulkStatus").textContent = "Elaborazione in corso...";
+
+  const txt = await readTxtFile(txtFile);
+  const rows = parseTxtElements(txt);
+
+  let imageFiles = [];
+  if (zipFile) {
+    imageFiles = await extractImagesFromZip(zipFile);
+  } else {
+    imageFiles = collectImagesFromFolder(folderFiles);
+  }
+
+  const imageMap = new Map();
+  for (const file of imageFiles) {
+    imageMap.set(normalizeMatchKey(file.name), file);
+  }
+
+  const imported = [];
+  let matched = 0;
+
+  for (const row of rows) {
+    const key = normalizeMatchKey(row.title);
+    const file = imageMap.get(key);
+
+    if (!file) continue;
+
+    matched += 1;
+    imported.push({
+      id: uid("item"),
+      name: row.title,
+      category: row.category,
+      source: file,
+      previewUrl: await fileToObjectUrl(file),
+    });
+  }
+
+  if (imported.length === 0) {
+    $("bulkStatus").textContent = "Nessun match trovato";
+    $("bulkPreviewWrap").hidden = true;
+    return;
+  }
+
+  const existingKeys = new Set(state.draft.items.map(x => normalizeMatchKey(x.name)));
+  const deduped = imported.filter(x => !existingKeys.has(normalizeMatchKey(x.name)));
+
+  state.draft.items.push(...deduped);
+  updateItemsUI();
+
+  $("bulkStatus").textContent = `Importati ${deduped.length} elementi (${matched} match trovati)`;
+  $("bulkPreviewWrap").hidden = false;
+  $("bulkPreviewCount").textContent = `${deduped.length} aggiunti`;
+
+  const previewList = $("bulkPreviewList");
+  previewList.innerHTML = "";
+  deduped.forEach(it => {
+    const row = document.createElement("div");
+    row.className = "itemRow";
+    row.innerHTML = `
+      <img src="${it.previewUrl}" alt="">
+      <div class="grow">
+        <div><b>${escapeHtml(it.name)}</b></div>
+        <div class="small">${it.category ? escapeHtml(it.category) : "—"}</div>
+      </div>
+    `;
+    previewList.appendChild(row);
+  });
 }
 
 /* =========================
@@ -583,6 +731,17 @@ async function manualOpenItemSuggestions() {
     $("itemImgPreview").style.display = "block";
     $("itemImgPreview").src = it.imageUrl;
   });
+}
+
+/* =========================
+   Tabs
+========================= */
+function switchCreateTab(mode) {
+  const isManual = mode === "manual";
+  $("tabManualBtn").classList.toggle("active", isManual);
+  $("tabBulkBtn").classList.toggle("active", !isManual);
+  $("tabManualPanel").hidden = !isManual;
+  $("tabBulkPanel").hidden = isManual;
 }
 
 /* =========================
@@ -868,12 +1027,12 @@ function wireUI() {
   $("cqCover").addEventListener("change", onCoverPicked);
   $("itemImg").addEventListener("change", onItemImgPicked);
 
-  $("cqTitle").addEventListener("input", () => debouncedCoverSuggest().catch?.(console.error));
+  $("cqTitle").addEventListener("input", () => debouncedCoverSuggest());
   $("cqTitle").addEventListener("focus", () => {
     if ($("cqTitle").value.trim().length >= 3) debouncedCoverSuggest();
   });
 
-  $("itemName").addEventListener("input", () => debouncedItemSuggest().catch?.(console.error));
+  $("itemName").addEventListener("input", () => debouncedItemSuggest());
   $("itemName").addEventListener("focus", () => {
     if ($("itemName").value.trim().length >= 3) debouncedItemSuggest();
   });
@@ -884,7 +1043,19 @@ function wireUI() {
   $("closeItemSuggestBtn").addEventListener("click", hideItemSuggestions);
 
   $("addItemBtn").addEventListener("click", addItem);
-  $("saveQuizBtn").addEventListener("click", () => saveQuiz().catch(e => { console.error(e); alert("Errore pubblicazione quiz."); }));
+  $("bulkProcessBtn").addEventListener("click", () => processBulkImport().catch(e => {
+    console.error(e);
+    $("bulkStatus").textContent = "Errore durante l'import";
+    alert("Errore durante l'import automatico.");
+  }));
+
+  $("tabManualBtn").addEventListener("click", () => switchCreateTab("manual"));
+  $("tabBulkBtn").addEventListener("click", () => switchCreateTab("bulk"));
+
+  $("saveQuizBtn").addEventListener("click", () => saveQuiz().catch(e => {
+    console.error(e);
+    alert("Errore pubblicazione quiz.");
+  }));
 
   $("cancelCreateBtn").addEventListener("click", () => {
     if (confirm("Annullare?")) {

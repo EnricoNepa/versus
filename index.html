@@ -78,7 +78,13 @@
 
       <h2>Elementi</h2>
 
-      <div class="card">
+      <div class="tabBar">
+        <button type="button" class="tabBtn active" id="tabManualBtn">Manuale</button>
+        <button type="button" class="tabBtn" id="tabBulkBtn">Elementi rapidi</button>
+      </div>
+
+      <!-- TAB MANUALE -->
+      <div class="card tabPanel" id="tabManualPanel">
         <div class="twoCol">
           <div class="row">
             <label class="label">Nome elemento</label>
@@ -115,6 +121,53 @@
         </div>
 
         <div id="itemsList" class="itemsList"></div>
+      </div>
+
+      <!-- TAB BULK -->
+      <div class="card tabPanel" id="tabBulkPanel" hidden>
+        <div class="bulkLayout">
+          <div class="bulkLeft">
+            <div class="row">
+              <label class="label">File testo (.txt)</label>
+              <input id="bulkTxtFile" class="input" type="file" accept=".txt,text/plain" />
+              <div class="muted smallText">
+                Formato: una riga per elemento, ad esempio: <br>
+                <code>Age of Empires - Strategy ♟️</code>
+              </div>
+            </div>
+
+            <div class="row">
+              <label class="label">Archivio immagini (.zip)</label>
+              <input id="bulkZipFile" class="input" type="file" accept=".zip,application/zip" />
+            </div>
+
+            <div class="row">
+              <label class="label">Oppure cartella immagini</label>
+              <input id="bulkFolderInput" class="input" type="file" webkitdirectory directory multiple accept="image/*" />
+            </div>
+
+            <div class="actions">
+              <button id="bulkProcessBtn" class="btn primary">Importa automaticamente</button>
+              <div class="muted" id="bulkStatus">Nessun import eseguito</div>
+            </div>
+
+            <div id="bulkPreviewWrap" class="bulkPreviewWrap" hidden>
+              <div class="bulkPreviewHead">
+                <strong>Anteprima import</strong>
+                <span class="muted" id="bulkPreviewCount"></span>
+              </div>
+              <div id="bulkPreviewList" class="itemsList"></div>
+            </div>
+          </div>
+
+          <div class="bulkRight">
+            <img
+              class="bulkHelpImg"
+              src="https://res.cloudinary.com/db86ixsho/image/upload/v1773910262/InstructionsUpload_omvde0.png"
+              alt="Istruzioni import rapido"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="actions sticky">
@@ -219,6 +272,8 @@
   <footer class="footer muted">
     Dati condivisi online (Firestore) • Immagini su Cloudinary.
   </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <script>
     window.CLOUDINARY_CLOUD_NAME = "db86ixsho";
