@@ -373,8 +373,17 @@ async function renderHome() {
 
     card.querySelector("[data-cover]").src = quiz.coverUrl || "";
 
-    card.querySelector('[data-act="play"]').onclick = (e) => { e.stopPropagation(); go("settings", quiz.id); };
-    card.querySelector('[data-act="rank"]').onclick = (e) => { e.stopPropagation(); go("rank", quiz.id); };
+        card.onclick = () => go("settings", quiz.id);
+
+    card.querySelector('[data-act="play"]').onclick = (e) => {
+      e.stopPropagation();
+      go("settings", quiz.id);
+    };
+
+    card.querySelector('[data-act="rank"]').onclick = (e) => {
+      e.stopPropagation();
+      go("rank", quiz.id);
+    };
   }
 }
 
