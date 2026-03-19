@@ -7,6 +7,7 @@
    - FIX Netlify: wait for Firebase init
    - Image suggestions: Wikimedia Commons
    - Bulk import: txt + zip/folder images
+   - Faster play: image preloading + instant repaint
 ========================= */
 
 const SIZES = [16, 32, 64, 128];
@@ -66,6 +67,47 @@ function isImageFilename(name) {
 
 async function fileToObjectUrl(file) {
   return URL.createObjectURL(file);
+}
+
+/* =========================
+   Image preload cache
+========================= */
+const imgPreloadCache = new Map();
+
+function preloadImage(url) {
+  if (!url) return Promise.resolve();
+  if (imgPreloadCache.has(url)) return imgPreloadCache.get(url);
+
+  const p = new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.loading = "eager";
+    img.src = url;
+
+    if (img.complete) {
+      resolve(url);
+      return;
+    }
+
+    img.onload = () => resolve(url);
+    img.onerror = () => resolve(url);
+  });
+
+  imgPreloadCache.set(url, p);
+  return p;
+}
+
+function preloadItems(items, limit = null) {
+  const arr = limit == null ? items : items.slice(0, limit);
+  return Promise.all(arr.map(it => preloadImage(it.imageUrl)));
+}
+
+function warmNextImages(run, pairsAhead = 4) {
+  if (!run?.roundItems?.length) return;
+  const start = run.pairIndex * 2;
+  const end = start + (pairsAhead * 2);
+  const upcoming = run.roundItems.slice(start, end);
+  upcoming.forEach(it => preloadImage(it.imageUrl));
 }
 
 /* =========================
@@ -784,10 +826,10 @@ async function renderSettings(quizId) {
     sizeSel.appendChild(o);
   }
 
-  $("startPlayBtn").onclick = () => startRun(quiz, items);
+  $("startPlayBtn").onclick = () => startRun(quiz, items).catch(console.error);
 }
 
-function startRun(quiz, items) {
+async function startRun(quiz, items) {
   const selectedCategory = $("psCategory").value || "";
   const size = parseInt($("psSize").value, 10);
   const doShuffle = $("psShuffle").checked;
@@ -804,6 +846,8 @@ function startRun(quiz, items) {
   if (doShuffle) pool = shuffle(pool);
   pool = pool.slice(0, size);
 
+  await preloadItems(pool, Math.min(pool.length, 12));
+
   state.run = {
     quizId: quiz.id,
     quizTitle: quiz.title,
@@ -819,6 +863,8 @@ function startRun(quiz, items) {
   };
 
   go("play");
+
+  preloadItems(pool).catch(() => {});
 }
 
 /* =========================
@@ -841,6 +887,8 @@ async function renderPlay() {
   const b = run.roundItems[run.pairIndex * 2 + 1];
 
   if (!a || !b) return advanceRound();
+
+  warmNextImages(run, 4);
 
   $("nameA").textContent = a.name;
   $("nameB").textContent = b.name;
@@ -869,7 +917,12 @@ function pickWinnerInstant(a, b, winner) {
 
   run.pairIndex += 1;
 
-  renderPlay();
+  warmNextImages(run, 4);
+
+  requestAnimationFrame(() => {
+    renderPlay().catch(console.error);
+  });
+
   enqueueBackground(() => incMatch(run.quizId, a.id, b.id, winner.id));
 }
 
@@ -885,7 +938,9 @@ function advanceRound() {
   run.round += 1;
 
   if (run.roundItems.length === 1) return finishRun(run.roundItems[0]);
-  renderPlay();
+
+  warmNextImages(run, 4);
+  renderPlay().catch(console.error);
 }
 
 function finishRun(winnerItem) {

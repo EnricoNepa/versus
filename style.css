@@ -224,6 +224,7 @@ h2{margin:18px 0 10px}
   object-fit: contain;
   background:#0a0b10;
   display:block;
+  transition: opacity .08s ease;
 }
 .choiceName{
   padding:12px 14px;
