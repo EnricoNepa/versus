@@ -337,3 +337,92 @@ h2{margin:18px 0 10px}
   overflow:hidden;
   text-overflow:ellipsis;
 }
+/* ===== Tabs create quiz ===== */
+.tabBar{
+  display:flex;
+  gap:10px;
+  margin:10px 0 14px;
+  padding:6px;
+  background: rgba(18,20,28,.55);
+  border:1px solid var(--line);
+  border-radius:16px;
+  width:fit-content;
+}
+
+.tabBtn{
+  appearance:none;
+  border:none;
+  background: transparent;
+  color: var(--muted);
+  padding:10px 16px;
+  border-radius:12px;
+  font-weight:700;
+  font-size:14px;
+  cursor:pointer;
+  transition: .15s ease;
+}
+
+.tabBtn:hover{
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+}
+
+.tabBtn.active{
+  background: linear-gradient(135deg, #2e63ff, #6aa0ff);
+  color:#fff;
+  box-shadow: 0 6px 18px rgba(46,99,255,.28);
+}
+
+/* ===== Bulk layout ===== */
+.bulkLayout{
+  display:grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+  gap:18px;
+  align-items:start;
+}
+
+@media (max-width: 1100px){
+  .bulkLayout{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Help image box ===== */
+.bulkRight{
+  position:sticky;
+  top:16px;
+}
+
+.bulkHelpImg{
+  width:100%;
+  max-width:520px;
+  max-height:640px;
+  object-fit:contain;
+  display:block;
+  margin:0 auto;
+  border-radius:18px;
+  border:1px solid var(--line);
+  background: rgba(18,20,28,.65);
+  box-shadow: var(--shadow);
+}
+
+/* ===== Small helper text ===== */
+.smallText{
+  font-size:13px;
+  line-height:1.45;
+}
+
+/* ===== Bulk preview ===== */
+.bulkPreviewWrap{
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid var(--line);
+}
+
+.bulkPreviewHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
